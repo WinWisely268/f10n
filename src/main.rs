@@ -6,7 +6,6 @@ use hashlink::LinkedHashMap;
 use hyper::{net::HttpsConnector, Client};
 use hyper_rustls::TlsClient;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::io::Write;
 use translate3::{DetectLanguageRequest, DetectedLanguage, Translate, TranslateTextRequest};
 use yup_oauth2::{service_account_key_from_file, ServiceAccountAccess};
@@ -23,7 +22,7 @@ impl Cache {
     }
 
     fn find_cache_content(&self, key: &str, lang: &str) -> Result<String> {
-        let res = self.db.get(format!("{}_{}", lang, key))?;
+        let res = self.db.get(&[lang, key].join("_"))?;
         match res {
             Some(v) => {
                 let vecv = v.to_vec();
@@ -39,8 +38,7 @@ impl Cache {
         if !res.is_empty() {
             return Ok(());
         }
-        self.db
-            .insert(format!("{}_{}", lang, key).as_str(), value)?;
+        self.db.insert(&[lang, key].join("_"), value)?;
 
         Ok(())
     }
@@ -48,17 +46,17 @@ impl Cache {
     fn get_untranslated_translated(
         &self,
         lang: &str,
-        keys: Vec<String>,
-    ) -> Result<(Vec<String>, HashMap<String, String>)> {
+        keys: &Vec<&str>,
+    ) -> Result<(Vec<String>, LinkedHashMap<String, String>)> {
         let mut untranslated: Vec<String> = vec![];
-        let mut translated: HashMap<String, String> = HashMap::new();
+        let mut translated: LinkedHashMap<String, String> = LinkedHashMap::new();
         for k in keys {
             let res = self.find_cache_content(&k, lang)?;
             if res.is_empty() {
-                untranslated.push(k);
+                untranslated.push(String::from(k.to_owned()));
                 continue;
             }
-            translated.insert(k, res);
+            translated.insert(String::from(k.to_owned()), res);
         }
         Ok((untranslated, translated))
     }
@@ -75,7 +73,7 @@ mod test_cache {
         c.add_to_cache("hello", "en", "hello")?;
         c.add_to_cache("hello", "es", "hola")?;
 
-        let res = c.get_untranslated_translated("fr", vec!["hello".to_string()])?;
+        let res = c.get_untranslated_translated("fr", &vec!["hello"])?;
         assert_eq!(1, res.0.len());
         Ok(())
     }
@@ -89,22 +87,23 @@ struct Svc {
 impl Svc {
     fn new(secret_path: &str) -> Result<Self> {
         let sec = service_account_key_from_file(&secret_path.to_string())?;
-        let project = sec.clone().project_id.unwrap();
+        let project = &sec.clone().project_id.unwrap();
         let client = Client::with_connector(HttpsConnector::new(TlsClient::new()));
         let acc = ServiceAccountAccess::new(sec, client);
         let client = Translate::new(
             Client::with_connector(HttpsConnector::new(TlsClient::new())),
             acc,
         );
+        let p: &str = &["projects", project].join("/");
         Ok(Svc {
             client,
-            project: format!("projects/{}", project),
+            project: p.to_owned(),
         })
     }
     fn detect_lang(&self, input: &str) -> Result<String> {
         let req = DetectLanguageRequest {
-            content: Some(input.to_string()),
-            mime_type: Some("text/plain".to_string()),
+            content: Some(String::from(input)),
+            mime_type: Some(String::from("text/plain")),
             model: None,
             labels: None,
         };
@@ -162,7 +161,7 @@ impl Svc {
                 .map(|t| {
                     let mut tled: Vec<String> = vec![];
                     for x in t {
-                        let tl = x.clone().translated_text.unwrap();
+                        let tl = x.translated_text.clone().unwrap();
                         tled.push(tl);
                     }
                     tled
@@ -304,11 +303,11 @@ fn translate_all(
     words: Vec<String>,
 ) -> Result<LinkedHashMap<String, LinkedHashMap<String, String>>> {
     let mut tl: LinkedHashMap<String, LinkedHashMap<String, String>> = LinkedHashMap::new();
+    let w = words.iter().map(|x| x.as_str()).collect::<Vec<&str>>();
     for lang in langs {
         let mut translations: LinkedHashMap<String, String> = LinkedHashMap::new();
         // check cache for translations and untranslated records
-        let w = words.clone();
-        let (untranslated, translated) = c.get_untranslated_translated(lang, w)?;
+        let (untranslated, translated) = c.get_untranslated_translated(lang, &w)?;
         translated.into_iter().for_each(|(k, v)| {
             translations.insert(k, v);
         });
@@ -360,7 +359,10 @@ fn create_l10n_files(
 
 #[cfg(test)]
 mod test_arb {
-    use super::*;
+    use super::{
+        create_l10n_files, lhm_from_template, to_be_translated_words, translate_all, Cache, Result,
+        Svc,
+    };
 
     #[test]
     fn test_arb() -> Result<()> {

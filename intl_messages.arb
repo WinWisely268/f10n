@@ -1,0 +1,27 @@
+{
+  "@@last_modified": "2021-01-24T23:29:41.765157",
+  "search": "Search",
+  "@search": {
+    "description": "search",
+    "type": "text",
+    "placeholders": {}
+  },
+  "noItemsAvailable": "No Items Available",
+  "@noItemsAvailable": {
+    "description": "No Items Available",
+    "type": "text",
+    "placeholders": {}
+  },
+  "noBootstrapsAvailable": "No Bootstraps Available",
+  "@noBootstrapsAvailable": {
+    "description": "No Bootstraps Available",
+    "type": "text",
+    "placeholders": {}
+  },
+  "selectBootstrap": "Select Bootstrap",
+  "@selectBootstrap": {
+    "description": "Select Bootstrap",
+    "type": "text",
+    "placeholders": {}
+  }
+}

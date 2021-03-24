@@ -1,0 +1,43 @@
+name: test
+
+on: [ push ]
+
+jobs:
+  all:
+    name: test
+
+    strategy:
+      fail-fast: true # saves ci time, won't be worth it if it even runs other platform
+      matrix:
+        os: [ ubuntu-20.04 ]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+
+      - name: Run clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+
+      - name: Run test
+        shell: bash
+        run: |
+          cat $GOOG_SECRET > ~/goog_secret.json
+          export $GOOGLE_APPLICATION_CREDENTIALS=$HOME/goog_secret.json
+          cargo test
+        env:
+          GOOG_SECRET: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        timeout-minutes: 20

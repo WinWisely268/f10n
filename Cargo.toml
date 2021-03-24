@@ -1,0 +1,25 @@
+[package]
+name = "f10n"
+version = "0.1.0"
+authors = ["winwisely268 <winwisely268@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "^2.33.3"
+anyhow = { version = "~1.0" }
+google-translate3 = "*"
+hashlink = "^0.6"
+# This project intentionally uses an old version of Hyper. See
+# https://github.com/Byron/google-apis-rs/issues/173 for more
+# information.
+hyper = "^0.10"
+hyper-rustls = "^0.6"
+yup-oauth2 = "^1.0"
+sled = "^0.34"
+serde = "^1.0"
+serde_json = { version = "^1.0", features = ["preserve_order"] }
+
+[profile.release]
+lto = true

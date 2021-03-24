@@ -1,0 +1,9 @@
+/target
+/testdata.db/
+/testdata/app_en.arb
+/testdata/app_fr.arb
+/testdata/app_de.arb
+/testdata/app_es.arb
+/testdata/app_it.arb
+/testdata/app_tr.arb
+/testdata/app_ur.arb

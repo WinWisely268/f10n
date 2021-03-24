@@ -14,7 +14,7 @@ hashlink = "^0.6"
 # This project intentionally uses an old version of Hyper. See
 # https://github.com/Byron/google-apis-rs/issues/173 for more
 # information.
-hyper = "^0.10"
+hyper = {version = "^0.10", default-features=false}
 hyper-rustls = "^0.6"
 yup-oauth2 = "^1.0"
 sled = "^0.34"

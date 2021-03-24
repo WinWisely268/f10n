@@ -35,8 +35,8 @@ jobs:
       - name: Run test
         shell: bash
         run: |
-          cat $GOOG_SECRET > ~/goog_secret.json
-          export $GOOGLE_APPLICATION_CREDENTIALS=$HOME/goog_secret.json
+          echo $GOOG_SECRET > ~/goog_secret.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/goog_secret.json
           cargo test
         env:
           GOOG_SECRET: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}

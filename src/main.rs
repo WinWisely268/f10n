@@ -1,15 +1,15 @@
 extern crate google_translate3 as translate3;
 
-use anyhow::{Result};
-use translate3::{TranslateTextRequest, Translate, DetectLanguageRequest, DetectedLanguage};
-use yup_oauth2::{service_account_key_from_file, ServiceAccountAccess};
+use anyhow::Result;
 use clap::{App, Arg};
-use std::collections::HashMap;
-use serde_json::Value;
 use hashlink::LinkedHashMap;
+use hyper::{net::HttpsConnector, Client};
+use hyper_rustls::TlsClient;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::io::Write;
-use hyper::{Client, net::HttpsConnector};
-use hyper_rustls::{TlsClient};
+use translate3::{DetectLanguageRequest, DetectedLanguage, Translate, TranslateTextRequest};
+use yup_oauth2::{service_account_key_from_file, ServiceAccountAccess};
 
 struct Cache {
     db: sled::Db,
@@ -19,9 +19,7 @@ impl Cache {
     fn new(cache_path: &str) -> Result<Self> {
         // Create local storage
         let c = sled::open(cache_path)?;
-        Ok(Cache {
-            db: c,
-        })
+        Ok(Cache { db: c })
     }
 
     fn find_cache_content(&self, key: &str, lang: &str) -> Result<String> {
@@ -32,7 +30,7 @@ impl Cache {
                 let result_str = std::str::from_utf8(&*vecv)?;
                 Ok(result_str.to_string())
             }
-            None => Ok("".to_string())
+            None => Ok("".to_string()),
         }
     }
 
@@ -41,13 +39,18 @@ impl Cache {
         if !res.is_empty() {
             return Ok(());
         }
-        self.db.insert(format!("{}_{}", lang, key).as_str(), value)?;
+        self.db
+            .insert(format!("{}_{}", lang, key).as_str(), value)?;
 
         Ok(())
     }
 
-    fn get_untranslated_translated(&self, lang: &str, keys: Vec<String>) -> Result<(Vec<String>, HashMap<String, String>)> {
-        let mut untranslated: Vec<String> = vec!();
+    fn get_untranslated_translated(
+        &self,
+        lang: &str,
+        keys: Vec<String>,
+    ) -> Result<(Vec<String>, HashMap<String, String>)> {
+        let mut untranslated: Vec<String> = vec![];
         let mut translated: HashMap<String, String> = HashMap::new();
         for k in keys {
             let res = self.find_cache_content(&k, lang)?;
@@ -66,24 +69,13 @@ mod test_cache {
     use super::Cache;
     use super::Result;
 
-
-    #[test]
-    fn test_insert_cache() -> Result<()> {
-        let c = Cache::new("./testdata.db")?;
-        c.add_to_cache("hello", "en", "hello")?;
-        c.add_to_cache("hello", "es", "hola")?;
-
-        assert_eq!("hola".to_string(), c.find_cache_content("hello", "es")?);
-        Ok(())
-    }
-
     #[test]
     fn test_get_untrans() -> Result<()> {
-        let c = Cache::new("./testdata.db")?;
+        let c = Cache::new("./testdata2.db")?;
         c.add_to_cache("hello", "en", "hello")?;
         c.add_to_cache("hello", "es", "hola")?;
 
-        let res = c.get_untranslated_translated("fr", vec!("hello".to_string()))?;
+        let res = c.get_untranslated_translated("fr", vec!["hello".to_string()])?;
         assert_eq!(1, res.0.len());
         Ok(())
     }
@@ -101,9 +93,8 @@ impl Svc {
         let client = Client::with_connector(HttpsConnector::new(TlsClient::new()));
         let acc = ServiceAccountAccess::new(sec, client);
         let client = Translate::new(
-            Client::with_connector(
-                HttpsConnector::new(TlsClient::new())
-            ), acc,
+            Client::with_connector(HttpsConnector::new(TlsClient::new())),
+            acc,
         );
         Ok(Svc {
             client,
@@ -117,14 +108,24 @@ impl Svc {
             model: None,
             labels: None,
         };
-        let res = self.client.projects()
-            .detect_language(req, &*self.project).doit();
+        let res = self
+            .client
+            .projects()
+            .detect_language(req, &*self.project)
+            .doit();
         match res {
             Ok(r) => {
-                let lang = r.1.languages.unwrap_or_default()
-                    .first()
-                    .unwrap_or(&DetectedLanguage { language_code: None, confidence: None })
-                    .language_code.clone().unwrap_or_default();
+                let lang =
+                    r.1.languages
+                        .unwrap_or_default()
+                        .first()
+                        .unwrap_or(&DetectedLanguage {
+                            language_code: None,
+                            confidence: None,
+                        })
+                        .language_code
+                        .clone()
+                        .unwrap_or_default();
                 Ok(lang)
             }
             Err(e) => Err(anyhow::Error::msg(e.to_string())),
@@ -147,30 +148,34 @@ impl Svc {
             contents: Some(inputs),
         };
 
-        let res = self.client.projects()
-            .translate_text(req, &*self.project).doit();
+        let res = self
+            .client
+            .projects()
+            .translate_text(req, &*self.project)
+            .doit();
         match res {
             Err(e) => Err(anyhow::Error::msg(e.to_string())),
-            Ok(res) => {
-                Ok(res.1.translations.iter()
-                    .map(|t| {
-                        let mut tled: Vec<String> = vec!();
-                        for x in t {
-                            let tl = x.clone().translated_text.unwrap();
-                            tled.push(tl);
-                        }
-                        tled
-                    })
-                    .flatten()
-                    .collect::<Vec<String>>())
-            }
+            Ok(res) => Ok(res
+                .1
+                .translations
+                .iter()
+                .map(|t| {
+                    let mut tled: Vec<String> = vec![];
+                    for x in t {
+                        let tl = x.clone().translated_text.unwrap();
+                        tled.push(tl);
+                    }
+                    tled
+                })
+                .flatten()
+                .collect::<Vec<String>>()),
         }
     }
 }
 
 #[cfg(test)]
 mod test_translate {
-    use super::{Svc, Result};
+    use super::{Result, Svc};
 
     #[test]
     fn detect_lang() -> Result<()> {
@@ -188,60 +193,78 @@ mod test_translate {
     fn translate() -> Result<()> {
         let client_secret_path = &std::env::var("GOOGLE_APPLICATION_CREDENTIALS")?;
         let s = Svc::new(client_secret_path)?;
-        let inputs = vec!("Search", "No Items available", "Buffalo Soldier", "Soldier of Fortune").into_iter().map(|x| x.to_string()).collect::<Vec<String>>();
+        let inputs = vec![
+            "Search",
+            "No Items available",
+            "Buffalo Soldier",
+            "Soldier of Fortune",
+        ]
+        .into_iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>();
         let result = s.translate(inputs, "de")?;
 
         assert_ne!(vec!("emp"), result);
-        assert_eq!(vec!("Suche", "Keine Artikel verfügbar", "Büffelsoldat", "Glückssoldat").into_iter().map(|x| x.to_string()).collect::<Vec<String>>(), result);
+        assert_eq!(
+            vec!(
+                "Suche",
+                "Keine Artikel verfügbar",
+                "Büffelsoldat",
+                "Glückssoldat"
+            )
+            .into_iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
+            result
+        );
         println!("{:?}", result);
 
         Ok(())
     }
 }
 
-
 fn main() -> Result<()> {
     let matches = App::new("f10n")
         .version("0.1")
         .author("Alexander Adhyatma <alex@asiatech.dev>")
         .about("translate template arb file to any language for flutter")
-        .args(
-            &[
-                Arg::with_name("target-languages")
-                    .help("target languages separated by space i.e. fr de es")
-                    .long("lang")
-                    .short("l")
-                    .multiple(true)
-                    .min_values(1)
-                    .default_value("fr de es it tr")
-                    .required(false),
-                Arg::with_name("cache")
-                    .help("path to the cache file (json)")
-                    .long("cache")
-                    .short("c")
-                    .takes_value(true)
-                    .default_value("translations_cache.json"),
-                Arg::with_name("arb-template")
-                    .help("path to the arb template")
-                    .long("arb-template")
-                    .short("t")
-                    .takes_value(true)
-                    .default_value("app_en.arb"),
-                Arg::with_name("prefix-dir")
-                    .help("prefix-dir for the output")
-                    .long("output")
-                    .short("o")
-                    .takes_value(true)
-                    .default_value("./testdata")
-            ])
+        .args(&[
+            Arg::with_name("target-languages")
+                .help("target languages separated by space i.e. fr de es")
+                .long("lang")
+                .short("l")
+                .multiple(true)
+                .min_values(1)
+                .default_value("fr de es it tr")
+                .required(false),
+            Arg::with_name("cache")
+                .help("path to the cache file (json)")
+                .long("cache")
+                .short("c")
+                .takes_value(true)
+                .default_value("translations_cache.json"),
+            Arg::with_name("arb-template")
+                .help("path to the arb template")
+                .long("arb-template")
+                .short("t")
+                .takes_value(true)
+                .default_value("app_en.arb"),
+            Arg::with_name("prefix-dir")
+                .help("prefix-dir for the output")
+                .long("output")
+                .short("o")
+                .takes_value(true)
+                .default_value("./testdata"),
+        ])
         .get_matches();
 
     let cache_arg = matches.value_of("cache").unwrap(); // config file is required anyway
-    let langs = matches.values_of("target-languages").unwrap().collect::<Vec<&str>>();
+    let langs = matches
+        .values_of("target-languages")
+        .unwrap()
+        .collect::<Vec<&str>>();
     let arb_template = matches.value_of("arb-template").unwrap();
     let prefix = matches.value_of("prefix-dir").unwrap();
-
-    std::fs::create_dir_all(prefix)?;
 
     // cache
     let cache = Cache::new(cache_arg)?;
@@ -258,7 +281,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn lhm_from_template(arb_template_path: &str) -> Result<serde_json::Map<String, serde_json::Value>> {
+fn lhm_from_template(
+    arb_template_path: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>> {
     let arb = std::fs::read(arb_template_path)?;
     let arb_val: serde_json::Value = serde_json::from_slice(&arb).unwrap();
     let arb_obj: serde_json::Map<String, serde_json::Value> = arb_val.as_object().unwrap().clone();
@@ -272,17 +297,21 @@ fn to_be_translated_words(m: &serde_json::Map<String, Value>) -> Vec<String> {
         .collect::<Vec<String>>()
 }
 
-fn translate_all(c: &Cache, s: &Svc, langs: Vec<&str>, words: Vec<String>) -> Result<LinkedHashMap<String, LinkedHashMap<String, String>>> {
+fn translate_all(
+    c: &Cache,
+    s: &Svc,
+    langs: Vec<&str>,
+    words: Vec<String>,
+) -> Result<LinkedHashMap<String, LinkedHashMap<String, String>>> {
     let mut tl: LinkedHashMap<String, LinkedHashMap<String, String>> = LinkedHashMap::new();
     for lang in langs {
         let mut translations: LinkedHashMap<String, String> = LinkedHashMap::new();
         // check cache for translations and untranslated records
         let w = words.clone();
         let (untranslated, translated) = c.get_untranslated_translated(lang, w)?;
-        translated.into_iter()
-            .for_each(|(k, v)| {
-                translations.insert(k, v);
-            });
+        translated.into_iter().for_each(|(k, v)| {
+            translations.insert(k, v);
+        });
         if !untranslated.is_empty() {
             let result = s.translate(untranslated.clone(), lang)?;
             for i in 0..untranslated.len() {
@@ -302,13 +331,17 @@ fn create_l10n_files(
     orig: &serde_json::Map<String, serde_json::Value>,
     prefix_dir: &str,
 ) -> Result<()> {
+    std::fs::create_dir_all(prefix_dir)?;
     for (lang, v) in translations {
         let mut tl: serde_json::Map<String, Value> = serde_json::Map::new();
         for (orig_key, orig_val) in orig {
             if orig_val.is_string() && !orig_key.starts_with('@') {
                 let ovstring = serde_json::to_string(orig_val)?.replace("\"", "");
                 let translated_val = v.get(&ovstring).unwrap().clone();
-                tl.insert(orig_key.to_string(), serde_json::Value::from(translated_val));
+                tl.insert(
+                    orig_key.to_string(),
+                    serde_json::Value::from(translated_val),
+                );
             } else {
                 tl.insert(orig_key.to_string(), orig_val.to_owned());
             }
@@ -342,13 +375,11 @@ mod test_arb {
         let client_secret_path = &std::env::var("GOOGLE_APPLICATION_CREDENTIALS")?;
         let s = Svc::new(client_secret_path)?;
         let linked_arb = lhm_from_template("./intl_messages.arb")?;
-        let to_be_tled = to_be_translated_words(&linked_arb)?;
-        let langs = vec!("en",
-                         "fr",
-                         "de",
-        );
+        let to_be_tled = to_be_translated_words(&linked_arb);
+        let langs = vec!["en", "fr", "de"];
         let translations = translate_all(&c, &s, langs, to_be_tled)?;
         let res = create_l10n_files(&translations, &linked_arb, "./testdata");
+        assert_eq!((), res?);
         Ok(())
     }
 }

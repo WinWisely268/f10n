@@ -1,3 +1,5 @@
+[![test](https://github.com/WinWisely268/f10n/actions/workflows/test.yml/badge.svg)](https://github.com/WinWisely268/f10n/actions/workflows/test.yml)
+
 # F10N
 
 A cli tool to translate arb template file to other languages (for flutter).

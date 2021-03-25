@@ -39,3 +39,9 @@ OPTIONS:
 
 The whole point of the application is to make sure we have a local cache (in this case a local embedded DB using `sled`)
 , so that we don't call google every time and saves us some money.
+
+## Example Usage
+
+- do a `cd` to this repo
+- do `f10n -t intl_messages.arb -c $HOME/.cache/translations -o examples -l en de fr it es tr ur id cn`
+- see your translations.
